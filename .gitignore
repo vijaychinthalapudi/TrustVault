@@ -10,6 +10,8 @@ build/
 *.sqlite-journal
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 
 # Environment variables & secrets
 .env
