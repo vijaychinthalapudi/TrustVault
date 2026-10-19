@@ -1,0 +1,28 @@
+{
+  "name": "trustvault-workspace",
+  "version": "1.0.0",
+  "description": "TrustVault - Secure document sharing platform with verified audit trail and immediate revocation",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "setup:all": "npm install && npm run build:server && npm run seed && npm run build:client",
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=server && npm run build --workspace=client",
+    "build:server": "npm run build --workspace=server",
+    "build:client": "npm run build --workspace=client",
+    "test": "npm run test --workspace=server",
+    "test:security": "npm run test:security --workspace=server",
+    "seed": "npm run seed --workspace=server",
+    "start": "npm run start --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "author": "TrustVault Team",
+  "license": "UNLICENSED"
+}
