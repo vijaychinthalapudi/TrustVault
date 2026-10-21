@@ -37,7 +37,6 @@ I updated `PolicyEvaluator.evaluateDocumentAccess` to separate administrative re
 
 This follows the principle of least privilege, ensuring that users receive only the access they actually need.
 
-**Commit Reference:** [`33bbe1f`](https://github.com/trustvault/trustvault/commit/33bbe1f)
 
 ---
 
@@ -70,7 +69,6 @@ Before sending any file content, the server checks the user's current permission
 
 This ensures that previously granted access cannot be reused through an old download token.
 
-**Commit Reference:** [`33bbe1f`](https://github.com/trustvault/trustvault/commit/33bbe1f)
 
 ---
 
@@ -103,7 +101,6 @@ I strengthened the audit system in three ways:
 
 These changes make unauthorized modifications harder to perform and easier to detect. The hash chain provides tamper evidence, while the database triggers enforce the append-only rule through normal database operations.
 
-**Commit Reference:** [`33bbe1f`](https://github.com/trustvault/trustvault/commit/33bbe1f)
 
 ---
 
@@ -137,7 +134,6 @@ I improved the upload validation logic in `fileValidator.ts` by adding several c
 
 This makes file validation more reliable than trusting the metadata supplied by the user.
 
-**Commit Reference:** [`33bbe1f`](https://github.com/trustvault/trustvault/commit/33bbe1f)
 
 ---
 
@@ -184,7 +180,6 @@ The query filters documents by status, access permissions, and the search terms 
 
 This approach protects document metadata as well as the document contents themselves.
 
-**Commit Reference:** [`33bbe1f`](https://github.com/trustvault/trustvault/commit/33bbe1f)
 
 ---
 
@@ -220,7 +215,32 @@ This makes it easier to demonstrate the main security requirements without repea
 
 The demo switcher is intended for evaluation convenience; it must not replace server-side authentication or authorization. Each selected identity still needs to be authenticated by the backend, and the server must enforce the corresponding permissions independently of the frontend.
 
-**Commit Reference:** [`9ac98b6`](https://github.com/trustvault/trustvault/commit/9ac98b6)
+
+---
+
+## Entry 7: Role-Revocation Bug Fix & Decoupling Ownership from Download Privileges
+
+- **Date:** 2026-10-21
+- **Category:** Authorization / Privilege Revocation / Zero-Trust Access Control
+
+**Prompt:**
+
+"Fix a critical role-revocation authorization bug in TrustVault. When a user's role changes from Owner to Viewer, enforce the new role immediately on the backend, including existing sessions and direct API requests. The downgraded user must not upload, edit, delete, or manage sharing permissions for documents using previous Owner privileges. Review document ownership and download permissions separately, and enforce the intended Viewer policy consistently. Do not delete or transfer documents automatically during a role change. Add regression tests reproducing Vivienne's scenario."
+
+**Issue Identified:**
+
+Previously, backend authorization logic in `PolicyEvaluator`, `PermissionService`, and `DocumentService` conflated database record ownership (`document.owner_id === actor.userId`) with current account-level authorization. Consequently, when an Owner who uploaded confidential documents was downgraded to a Viewer:
+1. The downgraded user retained previous Owner privileges on their previously uploaded documents, allowing them to continue editing, deleting, and granting/revoking sharing permissions.
+2. Document ownership automatically implied download permissions, failing to enforce the intended Viewer policy (which requires an explicit grant in `document_permissions` for a Viewer to access a document).
+
+**Correction Applied:**
+
+1. **Decoupled Ownership from Permissions:** Updated `PolicyEvaluator.evaluateDocumentAccess` to require both `document.owner_id === actor.userId` AND `actor.role === 'OWNER'` to grant Owner privileges. If an account has been downgraded to `VIEWER`, document ownership does NOT grant Owner privileges.
+2. **Consistent Viewer Policy Enforcement:** A downgraded Viewer account's read and download access strictly follows the document's permission grants (`activeGrant`). Without an active grant, download and metadata access are strictly denied (`403 Forbidden`). When granted an explicit `READ` permission, read/download access is authorized while Owner-only operations (edit, delete, manage permissions) remain strictly denied.
+3. **Protected Permission Management & Audit Trails:** Updated `PermissionService.grantAccess`, `PermissionService.revokeAccess`, `GET /api/documents/:id/permissions`, and `GET /api/documents/:id/audit` to require an active Owner role or Administrator role.
+4. **Prevented Document Deletion or Transfer:** Preserved document ownership records in SQLite intact across role changes.
+5. **Regression Test Verification:** Added 8 automated regression tests in `role-management.test.ts` reproducing Vivienne's scenario (promote to Owner, upload Legal Notice, downgrade to Viewer, verify immediate denial of Owner-only actions and verify authorized read access follows document permissions).
+
 
 ---
 

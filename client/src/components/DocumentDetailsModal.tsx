@@ -30,7 +30,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({
   const [isLoadingGrants, setIsLoadingGrants] = useState(false);
   const [copiedChecksum, setCopiedChecksum] = useState(false);
 
-  const isOwner = document.owner_id === user?.id;
+  const isOwner = user?.role === 'OWNER' && document.owner_id === user?.id;
   const canEdit = isOwner || document.my_permission === 'EDIT';
   const canViewPermissions = isOwner || user?.role === 'ADMIN';
 

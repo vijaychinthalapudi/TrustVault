@@ -284,4 +284,216 @@ describe('Role Management & Registration Security Invariants', () => {
       expect(chainStatus.isValid).toBe(true);
     });
   });
+
+  // 7. Vivienne's Scenario: Immediate Demotion & Ownership vs Permission Separation
+  describe("Vivienne's Scenario: Downgrade from Owner to Viewer", () => {
+    let vivienneId: string;
+    let vivienneToken: string;
+    let legalNoticeId: string;
+    let adminToken: string;
+    let charlieToken: string;
+
+    beforeEach(async () => {
+      adminToken = await login('admin@trustvault.local', 'Admin@TrustVault2026!');
+      charlieToken = await login('charlie@trustvault.local', 'Charlie@TrustVault2026!');
+
+      // Step 1: Register Vivienne (starts as Viewer by default)
+      const regRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Vivienne Vance',
+          email: 'vivienne@trustvault.local',
+          password: 'Vivienne@TrustVault2026!'
+        });
+      expect(regRes.status).toBe(201);
+      vivienneId = regRes.body.user.id;
+
+      // Step 2: System Administrator promotes Vivienne to OWNER
+      const promoRes = await request(app)
+        .patch(`/api/admin/users/${vivienneId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'OWNER' });
+      expect(promoRes.status).toBe(200);
+      expect(promoRes.body.user.role).toBe('OWNER');
+
+      // Step 3: Vivienne signs in as OWNER
+      vivienneToken = await login('vivienne@trustvault.local', 'Vivienne@TrustVault2026!');
+
+      // Step 4: Vivienne uploads "Legal Notice.pdf" using her Owner privileges
+      const pdfBytes = Buffer.from('%PDF-1.7\nConfidential Legal Notice Content\n%%EOF');
+      const uploadRes = await request(app)
+        .post('/api/documents')
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .attach('file', pdfBytes, 'Legal_Notice.pdf')
+        .field('display_name', 'Legal_Notice.pdf')
+        .field('category', 'Legal')
+        .field('description', 'Strictly confidential legal summons and notice.');
+      expect(uploadRes.status).toBe(201);
+      legalNoticeId = uploadRes.body.document.id;
+
+      // Step 4b: While Owner, Vivienne shares Legal Notice with Charlie (READ grant)
+      const grantRes = await request(app)
+        .put(`/api/documents/${legalNoticeId}/permissions/${CHARLIE_ID}`)
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .send({ permission: 'READ' });
+      expect(grantRes.status).toBe(200);
+
+      // Step 5: System Administrator downgrades Vivienne from OWNER to VIEWER
+      const demoteRes = await request(app)
+        .patch(`/api/admin/users/${vivienneId}/role`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ role: 'VIEWER' });
+      expect(demoteRes.status).toBe(200);
+      expect(demoteRes.body.user.role).toBe('VIEWER');
+    });
+
+    it('denies downgraded Vivienne from uploading new documents using her existing token', async () => {
+      const pdfBytes = Buffer.from('%PDF-1.7\nAnother doc\n%%EOF');
+      const res = await request(app)
+        .post('/api/documents')
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .attach('file', pdfBytes, 'Another_Doc.pdf')
+        .field('displayName', 'Another Doc')
+        .field('category', 'Legal');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Requires one of [OWNER, ADMIN]');
+    });
+
+    it('denies downgraded Vivienne from editing Legal Notice using previous Owner privileges', async () => {
+      const res = await request(app)
+        .patch(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .send({ display_name: 'Tampered_Legal_Notice.pdf', description: 'Malicious modification' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Access denied');
+    });
+
+    it('denies downgraded Vivienne from deleting Legal Notice', async () => {
+      const res = await request(app)
+        .delete(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Only document owner can delete');
+    });
+
+    it('denies downgraded Vivienne from managing sharing permissions (granting or revoking)', async () => {
+      // Vivienne attempts to grant access to Bob
+      const grantRes = await request(app)
+        .put(`/api/documents/${legalNoticeId}/permissions/${BOB_ID}`)
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .send({ permission: 'READ' });
+
+      expect(grantRes.status).toBe(403);
+      expect(grantRes.body.error).toContain('Only document owner can grant permissions');
+
+      // Vivienne attempts to revoke Charlie's access
+      const revokeRes = await request(app)
+        .delete(`/api/documents/${legalNoticeId}/permissions/${CHARLIE_ID}`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(revokeRes.status).toBe(403);
+      expect(revokeRes.body.error).toContain('Only document owner can revoke permissions');
+    });
+
+    it('denies downgraded Vivienne from inspecting permission grants or audit trail', async () => {
+      // Permission grants list
+      const permRes = await request(app)
+        .get(`/api/documents/${legalNoticeId}/permissions`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(permRes.status).toBe(403);
+      expect(permRes.body.error).toContain('Access denied');
+
+      // Audit trail
+      const auditRes = await request(app)
+        .get(`/api/documents/${legalNoticeId}/audit`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(auditRes.status).toBe(403);
+      expect(auditRes.body.error).toContain('Access denied');
+    });
+
+    it('preserves document ownership record in database without automatic deletion or transfer', async () => {
+      const doc = db.prepare(`SELECT * FROM documents WHERE id = ?`).get(legalNoticeId) as any;
+      expect(doc).toBeDefined();
+      expect(doc.owner_id).toBe(vivienneId);
+      expect(doc.status).toBe('ACTIVE');
+    });
+
+    it('enforces intended Viewer policy: denies download and discovery to Vivienne when she has no explicit grant', async () => {
+      // Direct download request
+      const downloadRes = await request(app)
+        .get(`/api/documents/${legalNoticeId}/download`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(downloadRes.status).toBe(403);
+      expect(downloadRes.body.error).toContain('Access denied');
+
+      // Metadata request
+      const metaRes = await request(app)
+        .get(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(metaRes.status).toBe(403);
+      expect(metaRes.body.error).toContain('Access denied');
+
+      // Search/list discovery: Legal Notice must NOT be discoverable to Vivienne without grant
+      const listRes = await request(app)
+        .get('/api/documents')
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(listRes.status).toBe(200);
+      const found = listRes.body.documents.find((d: any) => d.id === legalNoticeId);
+      expect(found).toBeUndefined();
+    });
+
+    it('allows authorized read access to follow the document permissions (Charlie has grant, Vivienne when granted)', async () => {
+      // 1. Charlie (granted READ prior to Vivienne's demotion) CAN still download
+      const charlieDownload = await request(app)
+        .get(`/api/documents/${legalNoticeId}/download`)
+        .set('Authorization', `Bearer ${charlieToken}`);
+
+      expect(charlieDownload.status).toBe(200);
+      expect(charlieDownload.body.toString()).toContain('Confidential Legal Notice Content');
+
+      // 2. Administrator grants Vivienne an explicit READ permission on Legal Notice
+      const adminGrantRes = await request(app)
+        .put(`/api/documents/${legalNoticeId}/permissions/${vivienneId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ permission: 'READ' });
+
+      expect(adminGrantRes.status).toBe(200);
+
+      // 3. Now Vivienne HAS an active grant: authorized read access succeeds!
+      const vivienneDownload = await request(app)
+        .get(`/api/documents/${legalNoticeId}/download`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(vivienneDownload.status).toBe(200);
+      expect(vivienneDownload.body.toString()).toContain('Confidential Legal Notice Content');
+
+      // 4. Metadata access succeeds
+      const vivienneMeta = await request(app)
+        .get(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+
+      expect(vivienneMeta.status).toBe(200);
+      expect(vivienneMeta.body.document.display_name).toBe('Legal_Notice.pdf');
+
+      // 5. But Vivienne STILL cannot edit, delete, or manage permissions even with the READ grant
+      const editAttempt = await request(app)
+        .patch(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`)
+        .send({ display_name: 'Renamed_By_Viewer.pdf' });
+      expect(editAttempt.status).toBe(403);
+
+      const deleteAttempt = await request(app)
+        .delete(`/api/documents/${legalNoticeId}`)
+        .set('Authorization', `Bearer ${vivienneToken}`);
+      expect(deleteAttempt.status).toBe(403);
+    });
+  });
 });
