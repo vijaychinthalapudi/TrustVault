@@ -228,3 +228,7 @@ npm run test:regression --workspace=server
   - **Build Command:** `npm install --include=dev && npm run build && npm run seed`
   - **Start Command:** `npm start`
   - **Environment:** Node.js (Production, WAL-mode SQLite, served single-origin with Vite client bundle)
+
+## 9. Demo Video
+
+- **Demo Video Link:** [https://youtu.be/6bGMx-56N3k](https://youtu.be/6bGMx-56N3k)
