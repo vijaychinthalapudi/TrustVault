@@ -1,16 +1,3 @@
-# TrustVault | Secure Document Sharing & Tamper-Evident Audit Platform
-
-> **Snovasys Fresher Hiring Challenge 2026 Submission**  
-> **Challenge Window:** 19–25 October 2026 | 100 Marks  
-> **Candidate Implementation Guide & Production Deliverable**
-
-[![Security Tests: 47/47 Passing](https://img.shields.io/badge/Security%20Tests-47%2F47%20Passing-emerald)](https://github.com/trustvault/trustvault)
-[![Architecture: Zero--Trust](https://img.shields.io/badge/Architecture-Zero--Trust-blue)](https://github.com/trustvault/trustvault)
-[![Audit: SHA--256%20Chain](https://img.shields.io/badge/Audit-SHA--256%20Chained-purple)](https://github.com/trustvault/trustvault)
-[![Revocation: Immediate](https://img.shields.io/badge/Revocation-Immediate%20(Real--Time)-green)](https://github.com/trustvault/trustvault)
-
----
-
 ## 1. Executive Summary & Core Security Invariant
 
 **TrustVault** is a zero-trust confidential document-sharing platform engineered to guarantee that:
@@ -214,13 +201,3 @@ npm run test:regression --workspace=server
 - **API Documentation:** [`API.md`](file:///c:/Users/vijay/Downloads/Project-001/API.md) — Complete endpoint reference and authorization access matrix.
 
 ---
-
-## 8. Five-Minute Demo Plan for Evaluators
-
-1. **0:00–0:30:** Open `http://localhost:5000`. Click **"Demo as Alice (Owner)"**. Alice sees her 3 confidential files.
-2. **0:30–1:20:** Upload a sample file (e.g. `Client_Agreement.pdf`). Notice the client-side feedback and server-side magic byte inspection.
-3. **1:20–2:00:** Open **Manage Access & Grants** on `Q3_Financial_Audit_Report.pdf`. Grant `READ` access to Bob.
-4. **2:00–2:40 (Negative IDOR Test):** Log out. Click **"Demo as Charlie (Unrelated)"**. Charlie's dashboard shows 0 documents. Attempt direct API request to download Alice's document ID $\to$ Receive **HTTP 403 Forbidden** with zero bytes leaked.
-5. **2:40–3:15 (Immediate Revocation):** Log in as Alice. Click **Revoke** on Bob's permission. Log in as Bob. Bob's very next attempt to download or view the document is instantly denied.
-6. **3:15–4:00 (Tamper-Evident Audit):** Log in as **"Administrator"**. Navigate to **Audit & Governance**. View the full chronological ledger of uploads, grants, and denied attempts. Click **"Re-verify Hash Chain"** to witness the cryptographic SHA-256 verification algorithm run across all blocks.
-7. **4:00–5:00:** Run `npm test` in the terminal to demonstrate all 32 security tests passing. Explain the single accepted limitation (in-flight network packet arrival before revocation commit).
