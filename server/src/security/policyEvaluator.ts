@@ -32,11 +32,14 @@ export class PolicyEvaluator {
       };
     }
 
-    // 2. Document Owner has full authority over their document
-    if (document.owner_id === actor.userId) {
+    const isDocumentOwner = document.owner_id === actor.userId;
+    const isOwnerRole = actor.role === 'OWNER';
+
+    // 2. Active Document Owner (account role === 'OWNER') has full authority over their document
+    if (isDocumentOwner && isOwnerRole) {
       return {
         allowed: true,
-        reason: 'Authorized as document owner.',
+        reason: 'Authorized as document owner with active Owner role.',
         effectivePermission: 'OWNER'
       };
     }
@@ -92,7 +95,9 @@ export class PolicyEvaluator {
     // Default Deny
     return {
       allowed: false,
-      reason: 'Access denied: No valid ownership or active permission grant for this document.'
+      reason: isDocumentOwner && actor.role === 'VIEWER'
+        ? 'Access denied: Downgraded Viewer account cannot access this document without an active permission grant.'
+        : 'Access denied: No valid ownership or active permission grant for this document.'
     };
   }
 
@@ -107,6 +112,6 @@ export class PolicyEvaluator {
    * Evaluates if a user can view audit logs for a specific document
    */
   public static canViewDocumentAudit(actor: AuthTokenPayload, document: DocumentRecord): boolean {
-    return actor.role === 'ADMIN' || actor.userId === document.owner_id;
+    return actor.role === 'ADMIN' || (actor.role === 'OWNER' && actor.userId === document.owner_id);
   }
 }

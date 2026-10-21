@@ -13,7 +13,7 @@ TrustVault adheres to the core security invariant:
 1. **Client / Browser Boundary:** The client application is strictly untrusted. UI state, hidden buttons, route guards, and client-side parameters are treated purely as visual ergonomics. Every access decision is made server-side.
 2. **Identity & Authentication Boundary:** Passwords hashed with bcrypt (12 rounds). Authentication tokens (HMAC-SHA256 JWT) derived from trusted server-side identity records.
 3. **Storage Boundary:** Uploaded documents reside outside the public web root in private storage. Raw user filenames are never used as filesystem paths; opaque UUIDv4 storage keys prevent path traversal and direct access.
-4. **Audit Boundary:** The audit log is append-only and cryptographically chained using sequential SHA-256 blocks (`prev_hash` $\to$ `hash`). Database triggers strictly forbid `UPDATE` and `DELETE` queries.
+4. **Audit Boundary:** The audit log is append-npm only and cryptographically chained using sequential SHA-256 blocks (`prev_hash` $\to$ `hash`). Database triggers strictly forbid `UPDATE` and `DELETE` queries.
 
 ---
 

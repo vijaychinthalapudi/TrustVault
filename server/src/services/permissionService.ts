@@ -42,8 +42,11 @@ export class PermissionService {
     requestId?: string;
     ipAddress?: string;
   }): DocumentPermission {
-    // 1. Only the document owner can grant permissions
-    if (params.document.owner_id !== params.actor.userId) {
+    // 1. Only an active document owner (role === 'OWNER') or administrator can grant permissions
+    const isOwner = params.actor.role === 'OWNER' && params.document.owner_id === params.actor.userId;
+    const isAdmin = params.actor.role === 'ADMIN';
+
+    if (!isOwner && !isAdmin) {
       AuditService.logEvent({
         actor_id: params.actor.userId,
         action: 'ACCESS_DENIED',
@@ -54,14 +57,14 @@ export class PermissionService {
         details: { 
           attempted_action: 'PERMISSION_GRANT',
           target_user: params.targetUserId,
-          reason: 'Only the document owner can grant permissions.' 
+          reason: 'Only document owner can grant permissions.' 
         }
       });
       throw new Error('Access denied: Only document owner can grant permissions.');
     }
 
-    // 2. Prevent granting access to oneself
-    if (params.targetUserId === params.actor.userId) {
+    // 2. Prevent granting access to oneself if already an active owner
+    if (params.targetUserId === params.actor.userId && params.actor.role === 'OWNER') {
       throw new Error('Owner automatically has full access; cannot grant redundant permission to oneself.');
     }
 
@@ -131,8 +134,11 @@ export class PermissionService {
     requestId?: string;
     ipAddress?: string;
   }): void {
-    // 1. Only the document owner can revoke permissions
-    if (params.document.owner_id !== params.actor.userId) {
+    // 1. Only an active document owner (role === 'OWNER') or administrator can revoke permissions
+    const isOwner = params.actor.role === 'OWNER' && params.document.owner_id === params.actor.userId;
+    const isAdmin = params.actor.role === 'ADMIN';
+
+    if (!isOwner && !isAdmin) {
       AuditService.logEvent({
         actor_id: params.actor.userId,
         action: 'ACCESS_DENIED',
@@ -143,7 +149,7 @@ export class PermissionService {
         details: { 
           attempted_action: 'PERMISSION_REVOKE',
           target_user: params.targetUserId,
-          reason: 'Only the document owner can revoke permissions.' 
+          reason: 'Only document owner can revoke permissions.' 
         }
       });
       throw new Error('Access denied: Only document owner can revoke permissions.');

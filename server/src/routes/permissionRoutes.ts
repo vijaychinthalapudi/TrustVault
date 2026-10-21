@@ -24,8 +24,11 @@ router.get('/:id/permissions', extractRequestId, authenticate, async (req: Authe
       return;
     }
 
-    // Only owner and admin can view permission grants
-    if (doc.owner_id !== req.user!.userId && req.user!.role !== 'ADMIN') {
+    // Only active owner and admin can view permission grants
+    const isOwner = doc.owner_id === req.user!.userId && req.user!.role === 'OWNER';
+    const isAdmin = req.user!.role === 'ADMIN';
+
+    if (!isOwner && !isAdmin) {
       AuditService.logEvent({
         actor_id: req.user!.userId,
         action: 'ACCESS_DENIED',

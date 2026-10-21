@@ -411,9 +411,14 @@ export class DocumentService {
     // Access control filtering in query:
     if (actor.role === 'ADMIN') {
       // Admin sees active documents for administrative governance
-    } else {
+    } else if (actor.role === 'OWNER') {
+      // Active Owner sees documents they own OR where they have an active grant
       where += ` AND (d.owner_id = ? OR d.id IN (SELECT document_id FROM document_permissions WHERE user_id = ?))`;
       params.push(actor.userId, actor.userId);
+    } else {
+      // Viewer sees ONLY documents where they have explicit permission grants
+      where += ` AND d.id IN (SELECT document_id FROM document_permissions WHERE user_id = ?)`;
+      params.push(actor.userId);
     }
 
     // Search filter (display_name or description)
@@ -450,7 +455,7 @@ export class DocumentService {
         u.name as owner_name, u.email as owner_email,
         dp.permission as my_permission,
         CASE 
-          WHEN d.owner_id = ? THEN 'OWNER'
+          WHEN ? = 'OWNER' AND d.owner_id = ? THEN 'OWNER'
           ELSE dp.permission 
         END as effective_role
       FROM documents d
@@ -460,6 +465,6 @@ export class DocumentService {
       ORDER BY d.created_at DESC
     `;
 
-    return db.prepare(query).all(actor.userId, actor.userId, ...params);
+    return db.prepare(query).all(actor.role, actor.userId, actor.userId, ...params);
   }
 }

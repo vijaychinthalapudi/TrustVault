@@ -168,8 +168,11 @@ router.get('/:id/audit', extractRequestId, authenticate, async (req: Authenticat
   try {
     const docData = DocumentService.getDocumentById(req.user!, req.params.id, req.requestId, req.ip);
 
-    // Only Owner and Admin can inspect history
-    if (docData.document.owner_id !== req.user!.userId && req.user!.role !== 'ADMIN') {
+    // Only active Owner and Admin can inspect history
+    const isOwner = docData.document.owner_id === req.user!.userId && req.user!.role === 'OWNER';
+    const isAdmin = req.user!.role === 'ADMIN';
+
+    if (!isOwner && !isAdmin) {
       AuditService.logEvent({
         actor_id: req.user!.userId,
         action: 'ACCESS_DENIED',
@@ -177,9 +180,9 @@ router.get('/:id/audit', extractRequestId, authenticate, async (req: Authenticat
         outcome: 'DENIED',
         request_id: req.requestId,
         ip_address: req.ip,
-        details: { attempted_action: 'VIEW_DOCUMENT_AUDIT', reason: 'Only document owner or administrator can view document history.' }
+        details: { attempted_action: 'VIEW_DOCUMENT_AUDIT', reason: 'Only active document owner or administrator can view document history.' }
       });
-      res.status(403).json({ error: 'Access denied: Only document owner or administrator can view document history.' });
+      res.status(403).json({ error: 'Access denied: Only active document owner or administrator can view document history.' });
       return;
     }
 
