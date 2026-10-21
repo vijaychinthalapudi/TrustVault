@@ -220,8 +220,9 @@ npm run test:regression --workspace=server
 
 ---
 
-## 8. Public Live Deployment
+## 8. Public Live Deployment 
 
+- **Request to evaluators:** **Render may take some time to load my application (Free version), please bear with it. Thank You!**
 - **Live URL:** [https://trustvault-rwsk.onrender.com/](https://trustvault-rwsk.onrender.com/)
 - **Health Check API:** [https://trustvault-rwsk.onrender.com/api/health](https://trustvault-rwsk.onrender.com/api/health)
 - **Deployment Platform:** Render Web Service
