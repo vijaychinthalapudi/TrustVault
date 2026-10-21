@@ -2,19 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FileText, Search, Download, Share2, Edit, Trash2, 
-  Activity, Shield, Plus, AlertCircle, RefreshCw, Lock, CheckCircle2, ShieldCheck
+  Activity, Shield, Plus, AlertCircle, RefreshCw, Lock, CheckCircle2, ShieldCheck,
+  Info, Calendar, XCircle
 } from 'lucide-react';
 import { api, DocumentItem } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ShareModal } from '../components/ShareModal';
 import { EditDocumentModal } from '../components/EditDocumentModal';
 import { DocumentHistoryModal } from '../components/DocumentHistoryModal';
+import { DocumentDetailsModal } from '../components/DocumentDetailsModal';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -23,6 +28,7 @@ export const Dashboard: React.FC = () => {
   const [sharingDoc, setSharingDoc] = useState<DocumentItem | null>(null);
   const [editingDoc, setEditingDoc] = useState<DocumentItem | null>(null);
   const [historyDoc, setHistoryDoc] = useState<DocumentItem | null>(null);
+  const [detailsDoc, setDetailsDoc] = useState<DocumentItem | null>(null);
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -30,7 +36,9 @@ export const Dashboard: React.FC = () => {
     try {
       const res = await api.documents.list({
         search: search || undefined,
-        category: selectedCategory !== 'ALL' ? selectedCategory : undefined
+        category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined
       });
       setDocuments(res.documents);
     } catch (err: any) {
@@ -45,7 +53,7 @@ export const Dashboard: React.FC = () => {
       fetchDocuments();
     }, 250);
     return () => clearTimeout(delayDebounce);
-  }, [search, selectedCategory]);
+  }, [search, selectedCategory, dateFrom, dateTo]);
 
   const handleDownload = async (doc: DocumentItem) => {
     try {
@@ -143,7 +151,7 @@ export const Dashboard: React.FC = () => {
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 mb-6 shadow-xl">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           {/* Search bar */}
-          <div className="relative w-full md:w-96">
+          <div className="relative w-full md:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
@@ -154,23 +162,71 @@ export const Dashboard: React.FC = () => {
             />
           </div>
 
-          {/* Category Filter Pills */}
-          <div className="flex items-center space-x-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-            {['ALL', 'Finance', 'Legal', 'Engineering', 'Operations', 'General'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                  selectedCategory === cat
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+          {/* Category Filter Pills & Advanced Filter Toggle */}
+          <div className="flex items-center space-x-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+            <div className="flex items-center space-x-1.5">
+              {['ALL', 'Finance', 'Legal', 'Engineering', 'Operations', 'General'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                    selectedCategory === cat
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`p-1.5 rounded-lg border text-xs font-medium flex items-center space-x-1 transition-colors ${
+                showFilters || dateFrom || dateTo
+                  ? 'bg-emerald-950/60 border-emerald-700 text-emerald-400'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+              title="Toggle Date Range Filters"
+            >
+              <Calendar className="w-4 h-4" />
+              <span className="hidden sm:inline">Dates</span>
+            </button>
           </div>
         </div>
+
+        {/* Date Filters Expandable Panel */}
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-slate-800 flex flex-wrap items-center gap-4 text-xs text-slate-400">
+            <div className="flex items-center space-x-2">
+              <span className="text-slate-400">From:</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-slate-400">To:</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className="text-xs text-rose-400 hover:text-rose-300 flex items-center space-x-1"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Reset Dates</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Documents List / Grid */}
@@ -268,6 +324,14 @@ export const Dashboard: React.FC = () => {
                     <span>Download</span>
                   </button>
 
+                  <button
+                    onClick={() => setDetailsDoc(doc)}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors"
+                    title="View Document Details & Security Metadata"
+                  >
+                    <Info className="w-4 h-4 text-slate-300" />
+                  </button>
+
                   {isOwner && (
                     <button
                       onClick={() => setSharingDoc(doc)}
@@ -335,6 +399,18 @@ export const Dashboard: React.FC = () => {
         <DocumentHistoryModal
           document={historyDoc}
           onClose={() => setHistoryDoc(null)}
+        />
+      )}
+
+      {detailsDoc && (
+        <DocumentDetailsModal
+          document={detailsDoc}
+          onClose={() => setDetailsDoc(null)}
+          onDownload={handleDownload}
+          onOpenShare={(doc) => { setDetailsDoc(null); setSharingDoc(doc); }}
+          onOpenEdit={(doc) => { setDetailsDoc(null); setEditingDoc(doc); }}
+          onOpenHistory={(doc) => { setDetailsDoc(null); setHistoryDoc(doc); }}
+          onDelete={(doc) => { setDetailsDoc(null); handleDelete(doc); }}
         />
       )}
     </div>

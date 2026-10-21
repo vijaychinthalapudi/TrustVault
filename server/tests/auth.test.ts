@@ -60,6 +60,37 @@ describe('Authentication & Identity Security', () => {
     expect(res.body.error).toContain('Password must be at least 8 characters long');
   });
 
+  it('always assigns VIEWER role to newly registered users by default', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'New Viewer User',
+        email: 'newviewer@trustvault.local',
+        password: 'ViewerPassword2026!'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.role).toBe('VIEWER');
+    expect(res.body.user.email).toBe('newviewer@trustvault.local');
+  });
+
+  it('strictly ignores or rejects client-supplied elevated role (e.g. ADMIN or OWNER) during registration', async () => {
+    // Adversary attempts self-privilege escalation by sending role: 'ADMIN'
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Adversary Admin Attempt',
+        email: 'sneakyadmin@trustvault.local',
+        password: 'SneakyPassword2026!',
+        role: 'ADMIN' // Malicious input
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.role).toBe('VIEWER'); // Must be forced to VIEWER!
+  });
+
   it('denies access to protected endpoint when token is missing', async () => {
     const res = await request(app).get('/api/auth/me');
     expect(res.status).toBe(401);

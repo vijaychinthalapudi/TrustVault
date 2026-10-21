@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, extractRequestId } from '../middleware/auth';
 import { PermissionService } from '../services/permissionService';
+import { AuditService } from '../services/auditService';
 import { db } from '../db';
 import { AuthenticatedRequest, DocumentRecord } from '../types';
 
@@ -25,6 +26,15 @@ router.get('/:id/permissions', extractRequestId, authenticate, async (req: Authe
 
     // Only owner and admin can view permission grants
     if (doc.owner_id !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      AuditService.logEvent({
+        actor_id: req.user!.userId,
+        action: 'ACCESS_DENIED',
+        document_id: documentId,
+        outcome: 'DENIED',
+        request_id: req.requestId,
+        ip_address: req.ip,
+        details: { attempted_action: 'VIEW_DOCUMENT_PERMISSIONS', reason: 'Only document owner or administrator can view permissions.' }
+      });
       res.status(403).json({ error: 'Access denied: Only document owner or administrator can view permissions.' });
       return;
     }

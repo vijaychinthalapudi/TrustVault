@@ -4,7 +4,7 @@
 > **Challenge Window:** 19–25 October 2026 | 100 Marks  
 > **Candidate Implementation Guide & Production Deliverable**
 
-[![Security Tests: 32/32 Passing](https://img.shields.io/badge/Security%20Tests-32%2F32%20Passing-emerald)](https://github.com/trustvault/trustvault)
+[![Security Tests: 47/47 Passing](https://img.shields.io/badge/Security%20Tests-47%2F47%20Passing-emerald)](https://github.com/trustvault/trustvault)
 [![Architecture: Zero--Trust](https://img.shields.io/badge/Architecture-Zero--Trust-blue)](https://github.com/trustvault/trustvault)
 [![Audit: SHA--256%20Chain](https://img.shields.io/badge/Audit-SHA--256%20Chained-purple)](https://github.com/trustvault/trustvault)
 [![Revocation: Immediate](https://img.shields.io/badge/Revocation-Immediate%20(Real--Time)-green)](https://github.com/trustvault/trustvault)
@@ -160,12 +160,36 @@ PASS  tests/search-leakage.test.ts (4 tests)
     ✓ allows granted users to discover only their authorized documents in list/search
     ✓ ensures unrelated user sees zero documents in default document list
 
-PASS  tests/auth.test.ts (7 tests)
+PASS  tests/role-management.test.ts (13 tests)
+  Role Management & Registration Security Invariants
+    Registration UI Security
+      ✓ verifies registration page code contains no role selector or role options
+    Unauthorized Role Modification Prevention
+      ✓ denies unauthenticated requests to modify user roles
+      ✓ denies Viewer from changing their own role (self-privilege escalation)
+      ✓ denies Owner from changing anyone else role
+      ✓ denies non-admin from listing all users
+    Administrator Role Management & Invariants
+      ✓ allows System Administrator to view registered users and their roles
+      ✓ allows System Administrator to promote a Viewer to Owner
+      ✓ prevents demoting the last active System Administrator
+      ✓ rejects unsupported invalid role values
+    Immediate Session Privilege Revocation
+      ✓ immediately denies Owner-only operations to an existing session token when role is demoted to Viewer
+      ✓ denies Viewer from performing Owner-only operations directly via the API
+    Document Ownership Separation
+      ✓ preserves existing document records and ownership intact when an account role is changed
+    Audit Logging of Role Changes
+      ✓ records an immutable, tamper-evident ROLE_CHANGE audit log with previous and new role
+
+PASS  tests/auth.test.ts (8 tests)
   Authentication & Identity Security
     ✓ allows valid user to sign in and returns JWT token
     ✓ rejects invalid password with safe error message and logs audit event
     ✓ rejects nonexistent user email safely without timing/enumeration leak
     ✓ enforces password complexity requirement during registration
+    ✓ always assigns VIEWER role to newly registered users by default
+    ✓ strictly ignores or rejects client-supplied elevated role (e.g. ADMIN or OWNER) during registration
     ✓ denies access to protected endpoint when token is missing
     ✓ denies access to protected endpoint when token is forged or malformed
 

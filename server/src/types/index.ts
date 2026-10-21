@@ -59,6 +59,8 @@ export type AuditAction =
   | 'PERMISSION_REVOKE'
   | 'ACCESS_DENIED'
   | 'ADMIN_AUDIT_VIEW'
+  | 'ADMIN_USERS_VIEW'
+  | 'ROLE_CHANGE'
   | 'CHAIN_INTEGRITY_VERIFIED';
 
 export type AuditOutcome = 'SUCCESS' | 'DENIED' | 'FAILED';

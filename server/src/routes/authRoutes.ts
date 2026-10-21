@@ -7,27 +7,55 @@ import { AuthenticatedRequest } from '../types';
 const router = Router();
 const loginRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxAttempts: 10 });
 
-// POST /api/auth/register
+// POST /api/auth/register - Public self-registration (Strictly VIEWER role)
 router.post('/register', extractRequestId, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       res.status(400).json({ error: 'Name, email, and password are required fields.' });
       return;
     }
 
+    // Server assigns Viewer role by default. Client-supplied role is discarded.
     const result = await AuthService.register({
       name,
       email,
       password,
-      role: role || 'VIEWER',
       requestId: req.requestId,
       ipAddress: req.ip
     });
 
     res.status(201).json({
-      message: 'User registered successfully.',
+      message: 'User registered successfully with Viewer access.',
+      user: result.user,
+      token: result.token
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/init-admin - Secure bootstrap for first administrator if none exists
+router.post('/init-admin', extractRequestId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      res.status(400).json({ error: 'Name, email, and password are required.' });
+      return;
+    }
+
+    const result = await AuthService.initializeFirstAdmin({
+      name,
+      email,
+      password,
+      requestId: req.requestId,
+      ipAddress: req.ip
+    });
+
+    res.status(201).json({
+      message: 'Initial System Administrator created successfully.',
       user: result.user,
       token: result.token
     });

@@ -95,11 +95,11 @@ export const api = {
       return data;
     },
 
-    async register(name: string, email: string, password: string, role?: string): Promise<{ user: User; token: string }> {
+    async register(name: string, email: string, password: string): Promise<{ user: User; token: string }> {
       const res = await fetch(`${BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role })
+        body: JSON.stringify({ name, email, password })
       });
       const data = await handleResponse<{ user: User; token: string }>(res);
       localStorage.setItem('trustvault_token', data.token);
@@ -128,11 +128,13 @@ export const api = {
   },
 
   documents: {
-    async list(filters?: { search?: string; category?: string; ownerId?: string }): Promise<{ documents: DocumentItem[] }> {
+    async list(filters?: { search?: string; category?: string; ownerId?: string; dateFrom?: string; dateTo?: string }): Promise<{ documents: DocumentItem[] }> {
       const params = new URLSearchParams();
       if (filters?.search) params.append('search', filters.search);
       if (filters?.category) params.append('category', filters.category);
       if (filters?.ownerId) params.append('ownerId', filters.ownerId);
+      if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) params.append('dateTo', filters.dateTo);
 
       const res = await fetch(`${BASE_URL}/documents?${params.toString()}`, {
         headers: { ...getAuthHeader() }
@@ -262,6 +264,27 @@ export const api = {
         headers: { ...getAuthHeader() }
       });
       return handleResponse<any>(res);
+    }
+  },
+
+  admin: {
+    async listUsers(): Promise<{ users: User[] }> {
+      const res = await fetch(`${BASE_URL}/admin/users`, {
+        headers: { ...getAuthHeader() }
+      });
+      return handleResponse<{ users: User[] }>(res);
+    },
+
+    async updateUserRole(userId: string, role: 'ADMIN' | 'OWNER' | 'VIEWER'): Promise<{ message: string; user: User }> {
+      const res = await fetch(`${BASE_URL}/admin/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
+        },
+        body: JSON.stringify({ role })
+      });
+      return handleResponse<{ message: string; user: User }>(res);
     }
   }
 };

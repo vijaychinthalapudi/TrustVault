@@ -127,3 +127,23 @@ This log records real AI-assisted engineering prompts, raw proposed outputs, spe
   - 👁️ **Bob (Viewer):** Verify permitted downloads and lack of edit rights.
   - 🚫 **Charlie (Unrelated):** Verify that unauthorized documents and search results are completely inaccessible.
 - **Commit Reference:** [`9ac98b6`](https://github.com/trustvault/trustvault/commit/9ac98b6)
+
+---
+
+### Entry 7: Registration Role Hardening, Immediate Session Revocation, and Admin Role Management
+- **Date:** 2026-10-21
+- **Category:** Authentication / Privilege Escalation Prevention / Role Management
+- **Prompt:**
+  > "Update TrustVault to remove role selection from registration, enforce VIEWER role default everywhere, allow only authorized Admins to manage roles, and ensure demoted sessions lose elevated rights immediately."
+- **Raw AI Output:**
+  1. The AI proposed removing the `<select>` role dropdown in `Login.tsx` and adding a role check in the registration handler.
+  2. For session management, the AI proposed relying on JWT payload verification (`req.user = decodedToken`).
+- **Specific Error / Vulnerability Caught:**
+  1. **Stale JWT Privilege Retention Vulnerability:** In a standard stateless JWT setup, if user Alice signs in as an `OWNER` and receives an 8-hour token, and an Administrator subsequently demotes Alice to a `VIEWER` in the database, Alice's existing JWT token still contains `{ role: 'OWNER' }`. Alice would retain elevated document upload and ownership privileges for up to 8 hours until token expiration!
+  2. **Client-Side Registration Bypass:** A malicious client could still send `{ name, email, password, role: 'ADMIN' }` directly via `curl` or Postman to escalate privileges if the backend did not strictly ignore or override the client-provided `role` field.
+- **Correction Applied:**
+  1. **Real-Time Database Role Resolution:** Updated `authenticate` middleware (`server/src/middleware/auth.ts`) to synchronously verify the user's live role and active status against SQLite (`SELECT id, email, role, status FROM users WHERE id = ?`). If an account is demoted or suspended, existing tokens **immediately lose obsolete privileges on the very next request**, proven with adversarial automated tests.
+  2. **Server-Enforced Registration Invariant:** Hardcoded `role: 'VIEWER'` in `server/src/services/authService.ts` and SQLite table schema default, strictly discarding any client-submitted `role` field.
+  3. **Role Change Immutability & Safety:** Implemented `PATCH /api/admin/users/:userId/role` with checks preventing the demotion of the last active administrator, and logged tamper-evident `ROLE_CHANGE` records into the SHA-256 chained audit trail.
+  4. **Frontend Admin User Management UI:** Built a dedicated User Role Management console inside `AdminAuditPage.tsx` with confirmation modals and real-time status updates.
+

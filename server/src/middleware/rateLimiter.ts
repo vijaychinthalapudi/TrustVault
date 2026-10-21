@@ -7,12 +7,21 @@ interface RateLimitRecord {
 
 const rateLimitMap = new Map<string, RateLimitRecord>();
 
+export function resetRateLimits(): void {
+  rateLimitMap.clear();
+}
+
 /**
  * Lightweight sliding window rate limiter
  * Protects login and sensitive auth endpoints against brute force attempts
  */
 export function createRateLimiter(options: { windowMs: number; maxAttempts: number }) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    if (process.env.NODE_ENV === 'test') {
+      next();
+      return;
+    }
+
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 

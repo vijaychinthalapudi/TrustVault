@@ -15,11 +15,12 @@ const upload = multer({
   }
 });
 
-// POST /api/documents - Upload a new confidential document
+// POST /api/documents - Upload a new confidential document (Owner or Admin only)
 router.post(
   '/',
   extractRequestId,
   authenticate,
+  requireRole('OWNER', 'ADMIN'),
   upload.single('file'),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -169,6 +170,15 @@ router.get('/:id/audit', extractRequestId, authenticate, async (req: Authenticat
 
     // Only Owner and Admin can inspect history
     if (docData.document.owner_id !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      AuditService.logEvent({
+        actor_id: req.user!.userId,
+        action: 'ACCESS_DENIED',
+        document_id: req.params.id,
+        outcome: 'DENIED',
+        request_id: req.requestId,
+        ip_address: req.ip,
+        details: { attempted_action: 'VIEW_DOCUMENT_AUDIT', reason: 'Only document owner or administrator can view document history.' }
+      });
       res.status(403).json({ error: 'Access denied: Only document owner or administrator can view document history.' });
       return;
     }

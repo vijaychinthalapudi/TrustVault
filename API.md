@@ -9,11 +9,12 @@ All endpoints reside under the `/api` prefix. Protected routes require the `Auth
 | Endpoint | Method | Anonymous | VIEWER (No Grant) | VIEWER (READ Grant) | VIEWER (EDIT Grant) | OWNER | ADMIN |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|
 | `/api/auth/login` | POST | Allow | Allow | Allow | Allow | Allow | Allow |
-| `/api/auth/register` | POST | Allow | Allow | Allow | Allow | Allow | Allow |
+| `/api/auth/register` | POST (Viewer default) | Allow | Allow | Allow | Allow | Allow | Allow |
+| `/api/auth/init-admin` | POST (Bootstrap) | Allow* | Deny (400)* | Deny (400)* | Deny (400)* | Deny (400)* | Deny (400)* |
 | `/api/auth/me` | GET | Deny (401) | Allow | Allow | Allow | Allow | Allow |
 | `/api/auth/users` | GET | Deny (401) | Allow | Allow | Allow | Allow | Allow |
 | `/api/documents` | GET (List/Search) | Deny (401) | Empty (Zero Leak) | Discoverable Only | Discoverable Only | Own Docs | All Docs (Gov.) |
-| `/api/documents` | POST (Upload) | Deny (401) | Allow | Allow | Allow | Allow | Allow |
+| `/api/documents` | POST (Upload) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Allow | Allow |
 | `/api/documents/:id` | GET (Metadata) | Deny (401) | Deny (403) | Allow | Allow | Allow | Allow (Gov.) |
 | `/api/documents/:id/download` | GET (Download) | Deny (401) | Deny (403) | Allow | Allow | Allow | Deny (403)* |
 | `/api/documents/:id` | PATCH (Edit) | Deny (401) | Deny (403) | Deny (403) | Allow | Allow | Deny (403) |
@@ -22,6 +23,8 @@ All endpoints reside under the `/api` prefix. Protected routes require the `Auth
 | `/api/documents/:id/permissions/:userId` | PUT (Grant) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Allow | Deny (403) |
 | `/api/documents/:id/permissions/:userId` | DELETE (Revoke) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Allow | Deny (403) |
 | `/api/documents/:id/audit` | GET (Doc Trail) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Allow | Allow |
+| `/api/admin/users` | GET (List Users) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Deny (403) | Allow |
+| `/api/admin/users/:id/role` | PATCH (Role Change) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Deny (403) | Allow |
 | `/api/audit` | GET (All Logs) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Deny (403) | Allow |
 | `/api/audit/verify` | GET (Hash Chain) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Deny (403) | Allow |
 | `/api/admin/stats` | GET (Metrics) | Deny (401) | Deny (403) | Deny (403) | Deny (403) | Deny (403) | Allow |
@@ -209,3 +212,69 @@ All endpoints reside under the `/api` prefix. Protected routes require the `Auth
     "message": "Audit chain fully verified. 35 records verified with cryptographic SHA-256 integrity."
   }
   ```
+
+---
+
+## 6. Administrator User & Role Management
+
+### 6.1 List All Users (Admin Only)
+- **Route:** `GET /api/admin/users`
+- **Auth:** Bearer Token (Requires `ADMIN` role)
+- **Response (200 OK):**
+  ```json
+  {
+    "users": [
+      {
+        "id": "33333333-3333-4333-a333-333333333333",
+        "name": "Bob Miller (Auditor)",
+        "email": "bob@trustvault.local",
+        "role": "VIEWER",
+        "status": "ACTIVE",
+        "created_at": "2026-10-19T12:00:00.000Z"
+      }
+    ]
+  }
+  ```
+
+### 6.2 Update User Role (Admin Only)
+- **Route:** `PATCH /api/admin/users/:userId/role`
+- **Auth:** Bearer Token (Requires `ADMIN` role)
+- **Request Body:**
+  ```json
+  {
+    "role": "OWNER"
+  }
+  ```
+- **Security & Real-Time Invariants:**
+  - Enforces `ADMIN` caller. Non-administrators receive `403 Forbidden` and trigger an `ACCESS_DENIED` audit log.
+  - Role modifications take effect immediately across all active sessions: authentication middleware queries live user state from the database on every request, revoking obsolete privileges from existing JWT tokens.
+  - Prevents demoting the last active administrator.
+  - Preserves document ownership and document records separately from account role.
+  - Creates a tamper-evident, hash-chained `ROLE_CHANGE` audit log record containing actor, target, previous role, and new role.
+- **Response (200 OK):**
+  ```json
+  {
+    "message": "User role updated successfully.",
+    "user": {
+      "id": "33333333-3333-4333-a333-333333333333",
+      "name": "Bob Miller (Auditor)",
+      "email": "bob@trustvault.local",
+      "role": "OWNER",
+      "status": "ACTIVE"
+    }
+  }
+  ```
+
+### 6.3 First Admin Initialization Bootstrap
+- **Route:** `POST /api/auth/init-admin`
+- **Auth:** None (Permitted strictly when exactly 0 active Administrators exist)
+- **Request Body:**
+  ```json
+  {
+    "name": "Initial System Admin",
+    "email": "admin@trustvault.local",
+    "password": "AdminBootstrapPassword2026!"
+  }
+  ```
+- **Security Invariant:** If any active administrator already exists in the system, returns `400 Bad Request` with `"Initial administrator setup is disabled. An administrator account already exists."`
+

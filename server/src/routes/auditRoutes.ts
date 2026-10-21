@@ -100,4 +100,66 @@ router.get(
   }
 );
 
+// GET /api/admin/users - User Management list (Admin only)
+router.get(
+  '/users',
+  extractRequestId,
+  authenticate,
+  requireRole('ADMIN'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const users = (await import('../services/authService')).AuthService.listAllUsersForAdmin();
+
+      AuditService.logEvent({
+        actor_id: req.user!.userId,
+        action: 'ADMIN_USERS_VIEW',
+        outcome: 'SUCCESS',
+        request_id: req.requestId,
+        ip_address: req.ip,
+        details: { total_users_viewed: users.length }
+      });
+
+      res.json({ users });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// PATCH /api/admin/users/:userId/role - Change user role (Admin only)
+router.patch(
+  '/users/:userId/role',
+  extractRequestId,
+  authenticate,
+  requireRole('ADMIN'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { role } = req.body;
+      const { userId } = req.params;
+
+      if (!role) {
+        res.status(400).json({ error: 'Missing required field: role.' });
+        return;
+      }
+
+      const { AuthService } = await import('../services/authService');
+      const updatedUser = await AuthService.updateUserRole({
+        adminActor: req.user!,
+        targetUserId: userId,
+        newRole: role,
+        requestId: req.requestId,
+        ipAddress: req.ip
+      });
+
+      res.json({
+        message: `User role successfully updated to ${role}.`,
+        user: updatedUser
+      });
+    } catch (err: any) {
+      const status = err.message.includes('Access denied') ? 403 : 400;
+      res.status(status).json({ error: err.message });
+    }
+  }
+);
+
 export default router;

@@ -23,6 +23,23 @@ export class DocumentService {
     requestId?: string;
     ipAddress?: string;
   }): Promise<DocumentRecord> {
+    // 0. Verify upload authority: Only Owner or Administrator can upload documents
+    if (params.actor.role !== 'OWNER' && params.actor.role !== 'ADMIN') {
+      AuditService.logEvent({
+        actor_id: params.actor.userId,
+        action: 'ACCESS_DENIED',
+        outcome: 'DENIED',
+        request_id: params.requestId,
+        ip_address: params.ipAddress,
+        details: {
+          attempted_action: 'DOCUMENT_UPLOAD',
+          actor_role: params.actor.role,
+          reason: 'Viewers are not permitted to upload documents. Owner or Administrator role required.'
+        }
+      });
+      throw new Error('Access denied: Viewers are not permitted to upload documents.');
+    }
+
     // 1. Validate file content, extension, magic bytes, and path safety
     const validation = validateUploadedFile(params.originalName, params.buffer, params.clientMimeType);
     if (!validation.valid || !validation.sanitizedName || !validation.detectedMimeType) {

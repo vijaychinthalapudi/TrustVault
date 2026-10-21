@@ -27,7 +27,7 @@ export function initDatabase(): void {
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('ADMIN', 'OWNER', 'VIEWER')),
+      role TEXT NOT NULL DEFAULT 'VIEWER' CHECK(role IN ('ADMIN', 'OWNER', 'VIEWER')),
       status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'SUSPENDED', 'DELETED')),
       created_at TEXT NOT NULL
     );
