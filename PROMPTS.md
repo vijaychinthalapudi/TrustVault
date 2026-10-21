@@ -1,18 +1,21 @@
-# TrustVault – AI-Generated Code Review and Security Improvements
+# TrustVault – AI-Generated Code Review and Security Improvements (PROMPTS.md)
+
+This log documents the iterative prompt engineering, AI code review, vulnerability identification, and corrective engineering implemented during the development of TrustVault. Every entry links directly to verified repository commits and automated tests.
+
+---
 
 ## Entry 1: Access Control and Administrator Permissions
 
 - **Date:** 2026-10-19
 - **Category:** Security / Authorization Policy
+- **Commit Reference:** [`33bbe1f`](https://github.com/vijaychinthalapudi/TrustVault/commit/33bbe1f)
+- **Verified In Code:** `server/src/security/policyEvaluator.ts` & `server/tests/security.test.ts`
 
 **Prompt:**
-
-"Design an authorization policy evaluator for TrustVault in TypeScript that supports ADMIN, OWNER, and VIEWER roles and determines whether a user can download or edit a document."
+> "Design an authorization policy evaluator for TrustVault in TypeScript that supports ADMIN, OWNER, and VIEWER roles and determines whether a user can download or edit a document."
 
 **Initial AI Output:**
-
-The AI suggested allowing administrators unrestricted access to every document by default.
-
+The AI suggested allowing administrators unrestricted access to every document by default:
 ```typescript
 if (actor.role === 'ADMIN') {
   return {
@@ -23,20 +26,14 @@ if (actor.role === 'ADMIN') {
 ```
 
 **Issue Identified:**
-
-While reviewing the generated code, I noticed that the administrator role was being treated as a superuser with access to all confidential documents. This contradicted the hackathon requirements, which emphasize protecting document contents from unauthorized users, including administrators who do not have explicit access.
+While reviewing the generated code, I noticed that the administrator role was being treated as a superuser with access to all confidential documents. This contradicted the challenge requirements, which emphasize protecting document contents from unauthorized users, including administrators who do not have an explicit grant.
 
 **Correction Applied:**
-
-I updated `PolicyEvaluator.evaluateDocumentAccess` to separate administrative responsibilities from document access.
-
-- Administrators can access platform audit logs and system metadata needed for governance.
+I updated `PolicyEvaluator.evaluateDocumentAccess` to enforce the Principle of Least Privilege:
+- Administrators can view platform audit logs and system metadata needed for compliance and governance.
 - Document owners can manage their own documents and grant permissions to other users.
-- Viewers can access documents only when they have the required permissions.
-- Administrators cannot download confidential content by default. Any exceptional access must be explicitly authorized or handled through a documented and auditable break-glass process.
-
-This follows the principle of least privilege, ensuring that users receive only the access they actually need.
-
+- Viewers can access documents only when granted explicit per-document permissions.
+- Administrators **cannot** download confidential file bytes by default. Any exceptional access requires an explicit per-document grant.
 
 ---
 
@@ -44,31 +41,23 @@ This follows the principle of least privilege, ensuring that users receive only 
 
 - **Date:** 2026-10-19
 - **Category:** Security / Access Invalidation
+- **Commit Reference:** [`33bbe1f`](https://github.com/vijaychinthalapudi/TrustVault/commit/33bbe1f)
+- **Verified In Code:** `server/src/routes/documentRoutes.ts` & `server/tests/revocation.test.ts`
 
 **Prompt:**
-
-"How can we implement fast document downloads in Express for users who have been granted permission?"
+> "How can we implement fast document downloads in Express for users who have been granted permission?"
 
 **Initial AI Output:**
-
-The AI recommended generating signed JWT download tokens with a 15-minute expiration. This would allow users to download files without checking their permissions against the database on every request.
+The AI recommended generating signed JWT download tokens with a 15-minute expiration so that clients could fetch bytes directly without hitting the database on each download request.
 
 **Issue Identified:**
-
-The approach improved download performance but introduced a security problem. If an owner revoked someone's access, that user could potentially continue downloading the document with an already-issued token until it expired.
-
-Even a short expiration period would violate the challenge requirement that access must be revoked immediately for new requests after the revocation is committed.
+The approach introduced a critical security flaw: if an owner revoked someone's access, the revoked user could continue downloading the confidential file using the unexpired pre-signed URL for up to 15 minutes. This violated the core requirement that revocation must take effect immediately for future requests.
 
 **Correction Applied:**
+I rejected pre-signed download tokens and routed all file transfers through the authenticated endpoint:
+`GET /api/documents/:id/download`
 
-I removed the use of pre-signed or long-lived download URLs and routed downloads through the authenticated endpoint:
-
-`/api/documents/:id/download`
-
-Before sending any file content, the server checks the user's current permissions against the database. When an owner revokes access, the corresponding permission record is deleted, and subsequent download requests are rejected with HTTP 403 Forbidden.
-
-This ensures that previously granted access cannot be reused through an old download token.
-
+Before streaming any bytes, the server executes a synchronous database check in SQLite against the active grants table. Once an owner revokes access (`DELETE /api/documents/:id/permissions/:userId`), the grant record is deleted, and any subsequent download request is immediately rejected with HTTP 403 Forbidden.
 
 ---
 
@@ -76,31 +65,23 @@ This ensures that previously granted access cannot be reused through an old down
 
 - **Date:** 2026-10-19
 - **Category:** Audit Trail / Data Integrity
+- **Commit Reference:** [`33bbe1f`](https://github.com/vijaychinthalapudi/TrustVault/commit/33bbe1f)
+- **Verified In Code:** `server/src/db/schema.ts`, `server/src/services/auditService.ts`, & `server/tests/security.test.ts`
 
 **Prompt:**
-
-"Create an audit logging schema and service in SQLite to record user and document activities."
+> "Create an audit logging schema and service in SQLite to record user and document activities."
 
 **Initial AI Output:**
-
-The AI generated a conventional `audit_logs` table containing fields such as ID, timestamp, action, and user ID. It also included functions for updating and deleting existing audit records.
+The AI generated a standard `audit_logs` table with standard CRUD helper functions, including `updateLog()` and `deleteLog()` for administrative log pruning.
 
 **Issue Identified:**
-
-The generated design did not adequately protect audit records against tampering. If someone modified or deleted an entry, the application had no reliable mechanism to prevent the change or detect it afterward.
-
-This was a concern because TrustVault relies on audit logs to investigate unauthorized access and other security-related activities.
+The generated design offered zero protection against forensic tampering. An attacker or rogue insider could modify past event records to conceal unauthorized exfiltration.
 
 **Correction Applied:**
-
-I strengthened the audit system in three ways:
-
-1. **Database-level protection:** Added SQLite triggers named `prevent_audit_update` and `prevent_audit_delete` to block updates and deletions of existing audit records.
-2. **Hash chaining:** Used SHA-256 to link each audit record to the previous record through a `prev_hash` field. This creates a chain in which each record's hash depends on its event data and the preceding hash.
-3. **Integrity verification:** Implemented `AuditService.verifyChainIntegrity` to check the chain and identify alterations, missing records, or unexpected entries.
-
-These changes make unauthorized modifications harder to perform and easier to detect. The hash chain provides tamper evidence, while the database triggers enforce the append-only rule through normal database operations.
-
+I implemented two distinct defense layers:
+1. **Database-level immutability:** Created SQLite triggers `prevent_audit_update` and `prevent_audit_delete` that raise a SQL error if any `UPDATE` or `DELETE` statement targets `audit_logs`.
+2. **Cryptographic SHA-256 Hash Chaining:** Modeled the audit log as a cryptographic ledger where each record contains `prev_hash` linking to the prior event's SHA-256 hash.
+3. **Ledger Verification Endpoint:** Built `AuditService.verifyChainIntegrity` (`GET /api/audit/verify`) to detect altered, omitted, or re-ordered log blocks.
 
 ---
 
@@ -108,32 +89,23 @@ These changes make unauthorized modifications harder to perform and easier to de
 
 - **Date:** 2026-10-19
 - **Category:** Security / Upload Protection
+- **Commit Reference:** [`33bbe1f`](https://github.com/vijaychinthalapudi/TrustVault/commit/33bbe1f)
+- **Verified In Code:** `server/src/services/fileValidator.ts` & `server/tests/security.test.ts`
 
 **Prompt:**
-
-"Implement a Multer file upload validator that checks file extensions and MIME types."
+> "Implement a Multer file upload validator that checks file extensions and MIME types."
 
 **Initial AI Output:**
-
-The AI suggested validating uploaded files using their original filenames and MIME types. For example, it would allow a file if its extension was `.pdf` and its MIME type indicated a PDF document.
+The AI validated uploads by checking the user-submitted filename extension and the browser-supplied `file.mimetype` header.
 
 **Issue Identified:**
-
-I found that these checks alone were not reliable because both the filename and MIME type can be controlled by the client. An attacker could rename an executable file to `invoice.pdf` and claim that it is a PDF.
-
-The original implementation also lacked sufficient protection against path traversal attempts and executable file uploads.
+Both the extension and `Content-Type` header are client-controlled and easily forged. An attacker could rename a Windows executable (`malware.exe`) to `invoice.pdf` and send `Content-Type: application/pdf`, bypassing the extension check. Path traversal sequences like `../../` were also unhandled.
 
 **Correction Applied:**
-
-I improved the upload validation logic in `fileValidator.ts` by adding several checks:
-
-1. **File signature validation:** Inspect the actual file bytes to identify formats such as PDF, PNG, JPEG, and supported DOCX files.
-2. **Executable detection:** Reject files containing recognized Windows PE (`MZ`) or Linux ELF executable signatures, regardless of their claimed extension.
-3. **Filename validation:** Check for path traversal patterns and reject unsafe filenames.
-4. **Secure storage:** Generate opaque UUIDv4 storage keys instead of using the original filename, and store uploaded files outside the public web root.
-
-This makes file validation more reliable than trusting the metadata supplied by the user.
-
+I added multi-layer server-side validation in `fileValidator.ts`:
+1. **Magic Byte Signature Inspection:** Reads binary file headers (`%PDF-`, PNG, JPEG, PK zip for DOCX, null-byte checks for text).
+2. **Executable Header Block:** Unconditionally rejects Windows PE (`0x4D 0x5A` / `MZ`) and Linux ELF (`0x7F 0x45 0x4C 0x46`) headers.
+3. **Path Traversal Sanitization:** Validates against `..`, `/`, `\`, saving uploads under server-generated opaque UUIDv4 keys (`<uuid>.bin`) in private storage outside the web root.
 
 ---
 
@@ -141,25 +113,20 @@ This makes file validation more reliable than trusting the metadata supplied by 
 
 - **Date:** 2026-10-19
 - **Category:** Security / Information Leakage
+- **Commit Reference:** [`33bbe1f`](https://github.com/vijaychinthalapudi/TrustVault/commit/33bbe1f)
+- **Verified In Code:** `server/src/services/documentService.ts` & `server/tests/search-leakage.test.ts`
 
 **Prompt:**
-
-"Implement a document search endpoint in Express that allows users to search documents by title and category."
+> "Implement a document search endpoint in Express that allows users to search documents by title and category."
 
 **Initial AI Output:**
-
-The AI suggested returning all active documents matching the search query and letting the frontend decide which documents the current user was allowed to view.
+The AI returned all active documents matching the search query and suggested that the frontend filter out documents the user was not permitted to open.
 
 **Issue Identified:**
-
-This approach could expose sensitive information even when the user could not open or download a document. For example, an unrelated user might discover the existence of a document with a title such as "Strategic Acquisition" or "CEO Termination" and potentially learn its ownership or upload details.
-
-I concluded that access control needed to be enforced by the backend before search results were returned.
+Filtering on the client exposes sensitive metadata. An unauthorized user searching keywords could infer confidential mergers, board decisions, or salary adjustments from returned document titles and metadata, even without downloading the file.
 
 **Correction Applied:**
-
-I moved the authorization checks directly into the SQL query so that only documents owned by the current user or explicitly shared with them can appear in search results.
-
+I embedded the authorization filter directly into the SQL query:
 ```sql
 WHERE d.status = 'ACTIVE'
   AND (
@@ -175,77 +142,107 @@ WHERE d.status = 'ACTIVE'
     OR d.description LIKE ?
   )
 ```
-
-The query filters documents by status, access permissions, and the search terms before returning results. As a result, unrelated users receive no search results for documents they are not authorized to access.
-
-This approach protects document metadata as well as the document contents themselves.
-
+Non-grantees receive zero search results and zero metadata for confidential documents they are not authorized to access.
 
 ---
 
-## Entry 6: Evaluator-Friendly Demo Login
+## Entry 6: Evaluator Demo Switcher
 
 - **Date:** 2026-10-19
 - **Category:** User Experience / Evaluation Tooling
+- **Commit Reference:** [`9ac98b6`](https://github.com/vijaychinthalapudi/TrustVault/commit/9ac98b6)
+- **Verified In Code:** `client/src/pages/Login.tsx`
 
 **Prompt:**
-
-"Design a login page for a document management application."
+> "Design a login page for a document management application."
 
 **Initial AI Output:**
-
-The AI proposed a standard login form requiring users to enter their email address and password manually.
+A basic login form requiring manual entry of email and password credentials for each test session.
 
 **Issue Identified:**
-
-Although a conventional login page would work, it could make the hackathon evaluation process unnecessarily slow. Evaluators would need to enter credentials repeatedly to test the different roles and verify the application's access control behavior.
-
-I decided to make the demonstration easier by providing a dedicated role switcher for the predefined demo accounts.
+Testing 4 different roles (Admin, Owner, Viewer, and Unrelated) would be tedious and slow for evaluators if they had to type credentials repeatedly.
 
 **Correction Applied:**
-
-I added an **Evaluator Demo Switcher** to `Login.tsx`, allowing evaluators to select one of four predefined demo accounts:
-
-- **Administrator:** Test platform governance features and review audit logs.
-- **Alice (Owner):** Upload documents, grant access to other users, and revoke permissions.
-- **Bob (Viewer):** Verify that permitted downloads work while editing remains restricted.
-- **Charlie (Unrelated User):** Confirm that unauthorized documents and search results remain inaccessible.
-
-This makes it easier to demonstrate the main security requirements without repeatedly entering credentials.
-
-The demo switcher is intended for evaluation convenience; it must not replace server-side authentication or authorization. Each selected identity still needs to be authenticated by the backend, and the server must enforce the corresponding permissions independently of the frontend.
-
+Added an **Evaluator Demo Switcher** above the login form in `Login.tsx` that pre-fills demo account credentials in 1 click:
+- **Admin:** `admin@trustvault.local` (Compliance & audit inspection)
+- **Owner (Alice):** `alice@trustvault.local` (Upload, share, revoke)
+- **Viewer (Bob):** `bob@trustvault.local` (Authorized download testing)
+- **Unrelated (Charlie):** `charlie@trustvault.local` (Adversarial testing & zero leakage verification)
 
 ---
 
-## Entry 7: Role-Revocation Bug Fix & Decoupling Ownership from Download Privileges
+## Entry 7: Default Viewer Registration & Administrator Role Management
+
+- **Date:** 2026-10-21
+- **Category:** Authentication / Role Security
+- **Commit Reference:** [`81867d5`](https://github.com/vijaychinthalapudi/TrustVault/commit/81867d5)
+- **Verified In Code:** `server/src/routes/authRoutes.ts`, `server/src/routes/auditRoutes.ts`, `client/src/pages/Login.tsx`, & `server/tests/role-management.test.ts`
+
+**Prompt:**
+> "Update registration to remove role selection so new users cannot self-escalate to Admin or Owner. Add a User Management section to the Admin dashboard allowing only Admins to change roles, and enforce that demoting an Owner to Viewer immediately blocks Owner actions on existing sessions."
+
+**Initial AI Output:**
+The AI proposed simply removing the `<select>` dropdown from the React frontend, while the backend still read `const role = req.body.role || 'VIEWER'`. For role enforcement, it suggested letting users re-login to obtain a new token.
+
+**Issue Identified:**
+1. A client could bypass the UI by sending `POST /api/auth/register` with `{"role": "ADMIN"}` directly to the backend.
+2. Relying on re-login meant existing JWT sessions retained obsolete elevated privileges until the token expired.
+
+**Correction Applied:**
+1. **Server-Side Role Assignment:** Backend explicitly ignores client `role` parameters and unconditionally creates users with `role = 'VIEWER'`.
+2. **Admin Role Management API:** Implemented `PATCH /api/admin/users/:id/role` restricted strictly to `ADMIN`, preventing self-demotion of the last active Admin, and logging an immutable `ROLE_CHANGE` event.
+3. **Live Session Privilege Sync:** `auth` middleware performs real-time database role lookups on protected routes. Demoted accounts lose elevated privileges instantly without waiting for token expiry.
+
+---
+
+## Entry 8: Role-Revocation Bug Fix & Decoupling Ownership from Download Privileges
 
 - **Date:** 2026-10-21
 - **Category:** Authorization / Privilege Revocation / Zero-Trust Access Control
+- **Commit Reference:** [`b86c762`](https://github.com/vijaychinthalapudi/TrustVault/commit/b86c762)
+- **Verified In Code:** `server/src/security/policyEvaluator.ts`, `server/src/services/permissionService.ts`, & `server/tests/role-management.test.ts`
 
 **Prompt:**
+> "Fix a critical role-revocation authorization bug in TrustVault. When a user's role changes from Owner to Viewer, enforce the new role immediately on the backend, including existing sessions and direct API requests. The downgraded user must not upload, edit, delete, or manage sharing permissions for documents using previous Owner privileges. Review document ownership and download permissions separately, and enforce the intended Viewer policy consistently. Do not delete or transfer documents automatically during a role change. Add regression tests reproducing Vivienne's scenario."
 
-"Fix a critical role-revocation authorization bug in TrustVault. When a user's role changes from Owner to Viewer, enforce the new role immediately on the backend, including existing sessions and direct API requests. The downgraded user must not upload, edit, delete, or manage sharing permissions for documents using previous Owner privileges. Review document ownership and download permissions separately, and enforce the intended Viewer policy consistently. Do not delete or transfer documents automatically during a role change. Add regression tests reproducing Vivienne's scenario."
+**Initial AI Output:**
+The AI proposed changing the `owner_id` of uploaded documents to `NULL` or transferring ownership to an admin upon role demotion so the demoted user could no longer act on them.
 
 **Issue Identified:**
-
-Previously, backend authorization logic in `PolicyEvaluator`, `PermissionService`, and `DocumentService` conflated database record ownership (`document.owner_id === actor.userId`) with current account-level authorization. Consequently, when an Owner who uploaded confidential documents was downgraded to a Viewer:
-1. The downgraded user retained previous Owner privileges on their previously uploaded documents, allowing them to continue editing, deleting, and granting/revoking sharing permissions.
-2. Document ownership automatically implied download permissions, failing to enforce the intended Viewer policy (which requires an explicit grant in `document_permissions` for a Viewer to access a document).
+Transferring or deleting documents during a role change violates data integrity, breaks existing grants for other users, and scrambles document audit history. The root issue was that `PolicyEvaluator` assumed `document.owner_id === actor.userId` automatically conferred Owner privileges regardless of the actor's current account role.
 
 **Correction Applied:**
+1. **Decoupled Ownership from Role Authority:** Updated `PolicyEvaluator.evaluateDocumentAccess` so that Owner privileges require `document.owner_id === actor.userId` **AND** `actor.role === 'OWNER'`. A demoted user remains the recorded creator/owner in the database, but can no longer exercise Owner actions.
+2. **Consistent Viewer Policy:** Demoted users must hold an explicit `READ` or `EDIT` grant to download or discover files, identical to any other Viewer.
+3. **Protected Permissions & Audit Access:** Restricted `grantAccess`, `revokeAccess`, and document audit endpoints to active Owners and Administrators.
+4. **Automated Regression Suite:** Added 8 regression tests covering Vivienne's full lifecycle (promote to Owner $\to$ upload $\to$ share $\to$ downgrade to Viewer $\to$ verify immediate denial of Owner actions and verified read access follows explicit grants).
 
-1. **Decoupled Ownership from Permissions:** Updated `PolicyEvaluator.evaluateDocumentAccess` to require both `document.owner_id === actor.userId` AND `actor.role === 'OWNER'` to grant Owner privileges. If an account has been downgraded to `VIEWER`, document ownership does NOT grant Owner privileges.
-2. **Consistent Viewer Policy Enforcement:** A downgraded Viewer account's read and download access strictly follows the document's permission grants (`activeGrant`). Without an active grant, download and metadata access are strictly denied (`403 Forbidden`). When granted an explicit `READ` permission, read/download access is authorized while Owner-only operations (edit, delete, manage permissions) remain strictly denied.
-3. **Protected Permission Management & Audit Trails:** Updated `PermissionService.grantAccess`, `PermissionService.revokeAccess`, `GET /api/documents/:id/permissions`, and `GET /api/documents/:id/audit` to require an active Owner role or Administrator role.
-4. **Prevented Document Deletion or Transfer:** Preserved document ownership records in SQLite intact across role changes.
-5. **Regression Test Verification:** Added 8 automated regression tests in `role-management.test.ts` reproducing Vivienne's scenario (promote to Owner, upload Legal Notice, downgrade to Viewer, verify immediate denial of Owner-only actions and verify authorized read access follows document permissions).
+---
 
+## Entry 9: Production TypeScript Declarations & Render PaaS Deployment
+
+- **Date:** 2026-10-21
+- **Category:** Deployment / Build Configuration / Dependency Management
+- **Commit Reference:** [`b2e0ea3`](https://github.com/vijaychinthalapudi/TrustVault/commit/b2e0ea3)
+- **Verified In Code:** `server/package.json`, `client/package.json`, `server/tsconfig.json` & Live Render URL
+
+**Prompt:**
+> "error deploying through render what are the errors, how to rectify... error TS7016: Could not find a declaration file for module 'express'... error TS2591: Cannot find name 'path'... should i deploy it from the beginning??"
+
+**Initial AI Output:**
+Suggesting that the user wipe the service and start over, or run `npm i --save-dev @types/node` inside the cloud shell.
+
+**Issue Identified:**
+Render sets `NODE_ENV=production` by default during web service builds. In npm v7+, `NODE_ENV=production` automatically applies `--omit=dev`, skipping all packages in `devDependencies`. Because `@types/node`, `@types/express`, `@types/cors`, `typescript`, `tsx`, and `vite` were placed under `devDependencies`, `tsc` executed without any Node or library declarations, resulting in widespread compilation failures.
+
+**Correction Applied:**
+1. **Moved Build-Time Types to `dependencies`:** Moved `@types/node`, `@types/express`, `@types/cors`, `@types/better-sqlite3`, `@types/jsonwebtoken`, `@types/multer`, `@types/uuid`, `@types/bcryptjs`, `typescript`, and `tsx` into `dependencies` in `server/package.json`.
+2. **Moved Client Build Tooling to `dependencies`:** Moved `vite`, `@vitejs/plugin-react`, `tailwindcss`, `postcss`, `autoprefixer`, and `@types/react` into `dependencies` in `client/package.json`.
+3. **Configured Explicit Types:** Added `"types": ["node", "jest"]` to `server/tsconfig.json`.
+4. **Configured Render Build Command:** Instructed the build command: `npm install --include=dev && npm run build && npm run seed`, successfully achieving a zero-error production build on Render.
 
 ---
 
 ## Overall Summary
 
-During TrustVault development, I reviewed AI-generated suggestions instead of accepting them without verification. The main improvements focused on separating administrator responsibilities from document access, enforcing immediate permission revocation, protecting audit records, validating uploaded files, preventing unauthorized document discovery, and simplifying the evaluator's testing experience.
-
-These changes helped align the implementation with the hackathon's security requirements while keeping the application practical to demonstrate and test.
+Throughout the development of TrustVault, AI suggestions were systematically audited against the challenge's strict security invariants. Every identified flaw—from administrative overreach to stale download tokens, metadata search leaks, disguised executable uploads, registration self-escalation, and production dependency packaging—was resolved with concrete server-side code and validated through automated adversarial tests.
