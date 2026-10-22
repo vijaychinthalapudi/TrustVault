@@ -93,7 +93,7 @@ router.get('/:id', extractRequestId, authenticate, async (req: AuthenticatedRequ
 // GET /api/documents/:id/download - Download document content (Checks READ/EDIT access)
 router.get('/:id/download', extractRequestId, authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { document, buffer } = DocumentService.getDocumentForDownload(
+    const { document, buffer } = await DocumentService.getDocumentForDownload(
       req.user!,
       req.params.id,
       req.requestId,

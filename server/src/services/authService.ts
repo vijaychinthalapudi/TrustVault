@@ -3,6 +3,7 @@ import { db } from '../db';
 import { User, SafeUser, UserRole, AuthTokenPayload } from '../types';
 import { hashPassword, comparePassword, generateToken } from '../utils/crypto';
 import { AuditService } from './auditService';
+import { DatabaseSyncService } from './databaseSyncService';
 
 export class AuthService {
   public static async register(params: {
@@ -39,6 +40,7 @@ export class AuthService {
     `);
 
     insertStmt.run(userId, name, email, passwordHash, role, createdAt);
+    DatabaseSyncService.scheduleSync();
 
     const safeUser: SafeUser = {
       id: userId,
@@ -212,6 +214,7 @@ export class AuthService {
 
     // 5. Update user role in database (Document ownership and document_permissions remain intact)
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(params.newRole, params.targetUserId);
+    DatabaseSyncService.scheduleSync();
 
     // 6. Record tamper-evident audit event
     AuditService.logEvent({
@@ -269,6 +272,7 @@ export class AuthService {
       INSERT INTO users (id, name, email, password_hash, role, status, created_at)
       VALUES (?, ?, ?, ?, 'ADMIN', 'ACTIVE', ?)
     `).run(userId, name, email, passwordHash, createdAt);
+    DatabaseSyncService.scheduleSync();
 
     AuditService.logEvent({
       actor_id: userId,

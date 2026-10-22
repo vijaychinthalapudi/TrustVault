@@ -1,6 +1,6 @@
 # TrustVault – Zero-Trust Confidential Document Sharing Platform
 
-[![Security Tests](https://img.shields.io/badge/Security%20Tests-55%20Passing-emerald?style=for-the-badge&logo=jest)](https://github.com/vijaychinthalapudi/TrustVault)
+[![Security Tests](https://img.shields.io/badge/Security%20Tests-57%20Passing-emerald?style=for-the-badge&logo=jest)](https://github.com/vijaychinthalapudi/TrustVault)
 [![Zero Trust](https://img.shields.io/badge/Architecture-Zero--Trust-blue?style=for-the-badge)](https://github.com/vijaychinthalapudi/TrustVault)
 [![Deployment](https://img.shields.io/badge/Live%20Deploy-Render%20Online-success?style=for-the-badge&logo=render)](https://trustvault-rwsk.onrender.com/)
 
@@ -12,6 +12,7 @@
 1. **Zero Unauthorized Disclosure:** Only explicitly authorized identities can discover, access, download, or edit each document.
 2. **Immediate Revocation:** Once an owner revokes a user's grant, or an administrator demotes an account, every subsequent request from that identity is blocked immediately.
 3. **Tamper-Evident Audit Trail:** Every sensitive action (allowed and denied) is cryptographically chained using sequential SHA-256 blocks and protected by database-level immutability triggers.
+4. **Durable Data Persistence:** Both database records and uploaded file contents persist across cloud container restarts and redeployments, eliminating ephemeral storage loss while preserving 100% of local development functionality.
 
 ### Core Security Invariant
 > *"For every document operation, the server must identify the authenticated actor, load the requested resource, evaluate the actor's current permission for that exact resource and action, record the outcome, and only then return or change protected data."*
@@ -42,18 +43,21 @@ flowchart TD
     AuditService -->|Write Block| AuditTable[("audit_logs (Immutable Triggers)")]
     PolicyEngine -->|5. If Allowed: Authorize Stream| StorageService["Private Storage Engine"]
     StorageService -->|6. Stream Bytes| Client
+    DB -.->|Sync Snapshot on Mutations & Shutdown| CloudStorage[("Supabase Private Bucket (Durable Sync)")]
+    StorageService -.->|Persist Binary Objects| CloudStorage
 ```
 
 ### Technology Stack:
 - **Backend:** Node.js v24 LTS + Express + TypeScript
 - **Database:** SQLite with `better-sqlite3` (WAL mode enabled, foreign keys enforced, database-level append-only triggers)
+- **Durable Cloud Persistence:** Supabase Storage Private Bucket integration (`DatabaseSyncService` + `StorageService`) with zero-leak local disk fallback for tests and development.
 - **Cryptography & Security:**
   - Password Hashing: `bcryptjs` (12 rounds)
   - Sessions: Stateless HMAC-SHA256 JWT Bearer tokens with real-time database role re-verification
   - Audit Integrity: SHA-256 sequential cryptographic hash chaining
   - Security Headers: `helmet` (Strict CSP, HSTS, X-Content-Type-Options, Frameguard)
 - **Frontend:** React 18 + Vite + Tailwind CSS + Lucide Icons + React Router
-- **Testing:** Jest + Supertest (55 automated unit, integration, adversarial, and regression tests)
+- **Testing:** Jest + Supertest (57 automated unit, integration, adversarial, and regression tests)
 
 ---
 
@@ -62,7 +66,7 @@ flowchart TD
 1. **Server-Side Enforcement on Every Request:**
    Every API route (`/api/documents/:id`, `/api/documents/:id/download`, `/api/documents/:id/permissions`, `/api/admin/users/:id/role`, etc.) calls `PolicyEvaluator.evaluateDocumentAccess`. Hidden buttons in the UI are never trusted.
 2. **Private Storage & Opaque Keys:**
-   Uploaded files are stored outside the public web root in `server/storage/`. Files are renamed to opaque UUIDs (`<uuid>.bin`). Raw user filenames or local server paths are never revealed in responses.
+   Uploaded files are stored outside the public web root. Files are renamed to opaque UUIDs (`<uuid>.bin`). Raw user filenames or local server paths are never revealed in responses.
 3. **Binary Magic Byte Inspection:**
    File extensions and browser-supplied `Content-Type` headers are not trusted. The server inspects binary file headers (`%PDF-`, PNG, JPEG, DOCX zip headers) and unconditionally blocks executable headers (`0x4D 0x5A` DOS PE and `0x7F 0x45 0x4C 0x46` ELF).
 4. **Zero Search & Metadata Leakage:**
@@ -73,6 +77,8 @@ flowchart TD
    When an Owner account is demoted to Viewer, existing unexpired tokens lose Owner privileges immediately. Document creators who are downgraded to Viewer cannot download their own files without an explicit permission grant, strictly enforcing Viewer policy.
 7. **Append-Only Tamper-Evident Audit Trail:**
    Audit logs are protected by SQLite database triggers forbidding `UPDATE` and `DELETE`. Each event is hashed with the previous record's hash. The integrity verification endpoint recalculates the ledger from the genesis block.
+8. **Durable Persistence Across Ephemeral Container Restarts:**
+   `DatabaseSyncService` and `StorageService` interface with a private Supabase Storage bucket. When deployed to platforms with ephemeral filesystems (such as Render Free Web Services), state is pulled on startup and synchronized on mutations and graceful shutdown (`SIGTERM`). Non-destructive seeding ensures newly registered users, uploaded documents, grants, and audit chains survive restarts.
 
 ---
 
@@ -94,9 +100,9 @@ npm install
 npm run seed
 ```
 
-### Step 3: Run the Automated Test Suite (55 Tests)
+### Step 3: Run the Automated Test Suite (57 Tests)
 ```bash
-# Runs all 55 tests across 6 test suites with zero warnings
+# Runs all 57 tests across 7 test suites with zero warnings
 npm test
 ```
 
@@ -116,9 +122,14 @@ npm run dev
 
 ## 6. Automated Test Suite Breakdown
 
-Our test suite contains **55 passing tests** across 6 suites, asserting both positive and negative adversarial security behaviors:
+Our test suite contains **57 passing tests** across 7 suites, asserting both positive and negative adversarial security behaviors:
 
 ```bash
+PASS  tests/persistence.test.ts (2 tests)
+  Data Persistence & Non-Destructive Seeding Verification
+    ✓ guarantees that non-destructive seedDatabase(false) does not wipe user-created documents or accounts
+    ✓ handles DatabaseSyncService scheduleSync gracefully in local mode without errors
+
 PASS  tests/security.test.ts (17 tests)
   TrustVault Security & Access Control Invariants
     T-01: IDOR & Unauthorized Download Prevention
@@ -214,13 +225,13 @@ npm run test:regression --workspace=server
 
 ## 7. Challenge Deliverables Reference
 
-- **Threat Register:** [`THREATS.md`](file:///c:/Users/vijay/Downloads/Project-001/THREATS.md) — 18 adversarial threats analyzed, mitigated, tested, and mapped.
-- **AI Usage Log:** [`PROMPTS.md`](file:///c:/Users/vijay/Downloads/Project-001/PROMPTS.md) — 9 dated technical entries detailing AI prompts, flawed proposals caught, corrections committed, and commit references.
+- **Threat Register:** [`THREATS.md`](file:///c:/Users/vijay/Downloads/Project-001/THREATS.md) — 19 adversarial threats analyzed, mitigated, tested, and mapped.
+- **AI Usage Log:** [`PROMPTS.md`](file:///c:/Users/vijay/Downloads/Project-001/PROMPTS.md) — 10 dated technical entries detailing AI prompts, flawed proposals caught, corrections committed, and commit references.
 - **API Documentation:** [`API.md`](file:///c:/Users/vijay/Downloads/Project-001/API.md) — Complete endpoint reference and authorization access matrix.
 
 ---
 
-## 8. Public Live Deployment 
+## 8. Public Live Deployment & Persistence Setup
 
 - **Request to evaluators:** **Render may take some time to load my application (Free version), please bear with it. Thank You!**
 - **Live URL:** [https://trustvault-rwsk.onrender.com/](https://trustvault-rwsk.onrender.com/)
@@ -229,6 +240,20 @@ npm run test:regression --workspace=server
   - **Build Command:** `npm install --include=dev && npm run build && npm run seed`
   - **Start Command:** `npm start`
   - **Environment:** Node.js (Production, WAL-mode SQLite, served single-origin with Vite client bundle)
+
+### 8.1 Optional Cloud Persistence Configuration (Render Environment Variables)
+To enable persistent database and file storage across Render Free container restarts:
+1. Create a free project on [Supabase](https://supabase.com/).
+2. In Supabase Dashboard -> **Storage**, create a private bucket named `trustvault-data` (leave Public Bucket toggled **OFF**).
+3. In Supabase Dashboard -> **Project Settings** -> **API**, copy your **Project URL** and **`service_role` secret key**.
+4. In Render Dashboard -> **Environment Variables**, configure:
+   - `SUPABASE_URL`: `https://your-project-id.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `your-service-role-secret-key`
+   - `SUPABASE_STORAGE_BUCKET`: `trustvault-data`
+
+*(If these variables are omitted, TrustVault operates in local disk mode automatically, preserving 100% of offline development functionality).*
+
+---
 
 ## 9. Demo Video
 

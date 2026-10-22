@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import { AuthTokenPayload, DocumentPermission, PermissionLevel, DocumentRecord } from '../types';
 import { AuditService } from './auditService';
+import { DatabaseSyncService } from './databaseSyncService';
 
 export class PermissionService {
   /**
@@ -111,6 +112,8 @@ export class PermissionService {
       }
     });
 
+    DatabaseSyncService.scheduleSync();
+
     return {
       id: grantId,
       document_id: params.document.id,
@@ -179,5 +182,7 @@ export class PermissionService {
         revoked_user_id: params.targetUserId
       }
     });
+
+    DatabaseSyncService.scheduleSync();
   }
 }

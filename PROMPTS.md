@@ -243,6 +243,32 @@ Render sets `NODE_ENV=production` by default during web service builds. In npm v
 
 ---
 
+## Entry 10: Ephemeral Hosting Data Persistence & Durable Cloud Storage Architecture
+
+- **Date:** 2026-10-22
+- **Category:** Data Persistence / Cloud Infrastructure / Zero-Loss Rehydration
+- **Commit Reference:** Pending commit
+- **Verified In Code:** `server/src/services/databaseSyncService.ts`, `server/src/services/storageService.ts`, `server/src/db/seed.ts`, `server/src/server.ts`, & `server/tests/persistence.test.ts`
+
+**Prompt:**
+> "Act as a senior backend engineer. Fix the data-persistence problem in my existing TrustVault project. After the deployed service restarts or is redeployed, uploaded documents disappear and only the three default documents appear again. Ensure database records persist across supported server restarts and redeployments. Ensure actual uploaded file contents also persist... Investigate a compatible managed database and durable file-storage solution with suitable free-tier options, such as Supabase."
+
+**Initial AI Output:**
+Proposing a complete rewrite from SQLite to PostgreSQL, migrating `better-sqlite3` to async `pg` and modifying all synchronous services, routes, triggers, and the 55 existing test fixtures.
+
+**Issue Identified:**
+1. **Massive Blast Radius:** Converting TrustVault's synchronous architecture (`better-sqlite3`, SQLite append-only triggers, cryptographic audit chain, and test fixtures) to async PostgreSQL would require rewriting dozens of files, introducing high risk of subtle access-control regressions, breaking existing tests, and violating the instruction not to rewrite unrelated modules.
+2. **Destructive Seed Script:** In `server/src/db/seed.ts`, `seedDatabase()` executed unconditional `DELETE FROM audit_logs; DELETE FROM documents; DELETE FROM users;`. Running `npm run seed` during Render builds was actively wiping all user-created data.
+3. **Ephemeral Container Storage:** Render Free tier containers do not support persistent disks; local files written to `storage/` are discarded when the container sleeps or redeploys.
+
+**Correction Applied:**
+1. **Durable Private Object Storage:** Enhanced `StorageService` to interface with Supabase Storage private buckets (`trustvault-data/documents/<key>`) while retaining local disk caching and seamless offline fallback for local development and tests.
+2. **Cloud Database Rehydration Engine:** Built `DatabaseSyncService` to download the persistent `trustvault.db` snapshot from Supabase Storage on container startup before opening SQLite, and flush WAL checkpoints (`wal_checkpoint(TRUNCATE)`) to cloud storage on data mutations and graceful shutdown (`SIGTERM`).
+3. **Non-Destructive Idempotent Seeding:** Refactored `seedDatabase()` to use `INSERT OR IGNORE` for default users, documents, and grants, ensuring user-created accounts and uploaded files are never deleted upon server restart.
+4. **Automated Verification:** Added `tests/persistence.test.ts`, asserting that user-created documents and accounts survive simulated server restarts, bringing the passing test suite to 57 tests across 7 suites with zero regressions.
+
+---
+
 ## Overall Summary
 
 Throughout the development of TrustVault, AI suggestions were systematically audited against the challenge's strict security invariants. Every identified flaw—from administrative overreach to stale download tokens, metadata search leaks, disguised executable uploads, registration self-escalation, and production dependency packaging—was resolved with concrete server-side code and validated through automated adversarial tests.

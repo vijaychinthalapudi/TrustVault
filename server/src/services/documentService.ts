@@ -8,6 +8,7 @@ import { PermissionService } from './permissionService';
 import { PolicyEvaluator } from '../security/policyEvaluator';
 import { validateUploadedFile, sanitizeFileName } from '../security/fileValidator';
 import { calculateBufferSha256 } from '../utils/crypto';
+import { DatabaseSyncService } from './databaseSyncService';
 
 export class DocumentService {
   /**
@@ -111,6 +112,8 @@ export class DocumentService {
       }
     });
 
+    DatabaseSyncService.scheduleSync();
+
     return {
       id: documentId,
       owner_id: params.actor.userId,
@@ -182,12 +185,12 @@ export class DocumentService {
   /**
    * Downloads document content after real-time authorization evaluation
    */
-  public static getDocumentForDownload(
+  public static async getDocumentForDownload(
     actor: AuthTokenPayload,
     documentId: string,
     requestId?: string,
     ipAddress?: string
-  ): { document: DocumentRecord; buffer: Buffer } {
+  ): Promise<{ document: DocumentRecord; buffer: Buffer }> {
     const doc = db.prepare(`SELECT * FROM documents WHERE id = ?`).get(documentId) as DocumentRecord | undefined;
 
     if (!doc) {
@@ -210,7 +213,7 @@ export class DocumentService {
       throw new Error(`Access denied: ${evalResult.reason}`);
     }
 
-    const buffer = StorageService.getFileBuffer(doc.storage_key);
+    const buffer = await StorageService.getFileBuffer(doc.storage_key);
 
     AuditService.logEvent({
       actor_id: actor.userId,
@@ -330,6 +333,8 @@ export class DocumentService {
       }
     });
 
+    DatabaseSyncService.scheduleSync();
+
     return {
       ...doc,
       display_name: displayName,
@@ -389,6 +394,8 @@ export class DocumentService {
         deleted_display_name: doc.display_name
       }
     });
+
+    DatabaseSyncService.scheduleSync();
   }
 
   /**
